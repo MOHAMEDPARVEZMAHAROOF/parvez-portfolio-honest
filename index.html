@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grounding Engine — Parvez Maharoof</title>
+<meta name="description" content="PARVEZ.OS — the portfolio of Mohamed Parvez Maharoof. A real-time 3D grounding engine: Anvil, Athena, ScamLens, FormLens orbiting an honesty core.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
+<style>
+  :root{
+    --void:#0A0A0C; --void-2:#101013; --bone:#F2EAD8; --dim:#9A927E; --faint:#5F5A4C;
+    --amber:#E8A33D; --amber-deep:#9A6A24; --ok:#7FB069; --line:rgba(242,234,216,.13);
+    --grot:'Space Grotesk',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace; --body:'Inter',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--void);color:var(--bone);font-family:var(--body);font-size:16px;line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  ::selection{background:var(--amber);color:var(--void)}
+  a{color:inherit;text-decoration:none}
+  ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-track{background:var(--void)}
+  ::-webkit-scrollbar-thumb{background:#2b2b30;border-radius:6px}::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+
+  #loader{position:fixed;inset:0;z-index:500;background:var(--void);display:flex;flex-direction:column;gap:20px;align-items:center;justify-content:center;transition:opacity .8s,visibility .8s;font-family:var(--mono)}
+  #loader.done{opacity:0;visibility:hidden}
+  #loader .lt{font-size:.78rem;letter-spacing:.3em;color:var(--dim)}
+  #loader .lb{width:min(320px,60vw);height:2px;background:#1e1e22;overflow:hidden}
+  #loader .lb i{display:block;height:100%;width:0;background:var(--amber);transition:width .3s}
+  #loader .ls{font-size:.68rem;letter-spacing:.24em;color:var(--faint)}
+
+  #gl{position:fixed;inset:0;z-index:0;display:block;cursor:grab;touch-action:pan-y}
+  #gl.dragging{cursor:grabbing}
+  .no-webgl #gl{display:none}
+  .vignette{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.55) 100%)}
+  .noise{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");}
+
+  /* ---------- HUD ---------- */
+  .hud{position:fixed;z-index:60;font-family:var(--mono);font-size:.68rem;letter-spacing:.2em;pointer-events:none}
+  .hud.tl{top:20px;left:clamp(18px,3.4vw,44px);display:flex;align-items:center;gap:12px}
+  .hud.tl .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:blink 2s infinite}
+  .hud.tl b{color:var(--amber);font-weight:500}
+  .hud.tr{top:20px;right:clamp(18px,3.4vw,44px);color:var(--dim);font-variant-numeric:tabular-nums}
+  .hud.tr b{color:var(--amber);font-weight:500}
+  .hud.bl{bottom:20px;left:clamp(18px,3.4vw,44px);color:var(--faint)}
+  .hud.bl b{color:var(--bone);font-weight:500}
+  .hud.br{bottom:20px;right:clamp(18px,3.4vw,44px);color:var(--faint);text-align:right}
+  .hud.br kbd{border:1px solid var(--line);border-radius:4px;padding:1px 7px;color:var(--dim);font-family:var(--mono)}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  @media(max-width:700px){.hud.br{display:none}}
+
+  /* ---------- scroll content ---------- */
+  #scroll{position:relative;z-index:10;pointer-events:none}
+  #scroll a,#scroll button,#scroll .clickable{pointer-events:auto}
+  .chapter{min-height:100svh;display:flex;align-items:center;padding:110px clamp(20px,5vw,72px);max-width:1280px;margin:0 auto}
+  .panel{background:rgba(10,10,12,.62);border:1px solid var(--line);border-radius:12px;padding:clamp(30px,4vw,58px);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);max-width:640px;pointer-events:auto}
+  .panel.right{margin-left:auto}
+  .ch-no{font-family:var(--mono);font-size:.7rem;letter-spacing:.3em;color:var(--amber);margin-bottom:16px}
+  h2.big{font-family:var(--grot);font-weight:700;font-size:clamp(2.1rem,4.8vw,3.9rem);line-height:1.05;letter-spacing:-.015em;margin-bottom:18px}
+  h2.big .dim{color:var(--faint)}
+  .panel p{color:var(--dim);margin-bottom:14px}
+  .panel p strong{color:var(--bone)}
+  .panel p em{color:var(--amber);font-style:normal;font-weight:600}
+
+  .hero-chapter{flex-direction:column;justify-content:flex-end;align-items:flex-start;padding-bottom:110px}
+  .hero-kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.3em;color:var(--dim);margin-bottom:18px}
+  .hero-kicker b{color:var(--ok);font-weight:500}
+  h1.mega{font-family:var(--grot);font-weight:700;font-size:clamp(3.4rem,11vw,10rem);line-height:.92;letter-spacing:-.03em;margin-bottom:20px}
+  h1.mega .amber{color:var(--amber)}
+  .hero-sub{max-width:560px;color:var(--dim);font-size:clamp(1rem,1.6vw,1.2rem);margin-bottom:26px}
+  .hero-sub strong{color:var(--bone)}
+  .ticker{width:100%;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;margin-top:34px;pointer-events:auto;background:rgba(10,10,12,.5);backdrop-filter:blur(8px)}
+  .ticker-track{display:inline-flex;gap:0;white-space:nowrap;animation:tick 26s linear infinite;font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;color:var(--dim)}
+  .ticker-track span{padding:0 28px}
+  .ticker-track .ok{color:var(--ok)}
+  @keyframes tick{to{transform:translateX(-50%)}}
+
+  .case-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px}
+  @media(max-width:560px){.case-grid{grid-template-columns:1fr}}
+  .case-btn{text-align:left;background:rgba(232,163,61,.05);border:1px solid var(--line);border-radius:8px;padding:20px;cursor:pointer;transition:all .3s;color:var(--bone);font-family:var(--body)}
+  .case-btn:hover{border-color:var(--amber);transform:translateY(-3px);background:rgba(232,163,61,.1)}
+  .case-btn .cb-n{font-family:var(--mono);font-size:.66rem;letter-spacing:.24em;color:var(--amber)}
+  .case-btn h4{font-family:var(--grot);font-size:1.4rem;margin:6px 0 4px}
+  .case-btn p{font-size:.84rem;color:var(--dim);margin:0}
+
+  .ledger{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:26px}
+  .cell{background:rgba(10,10,12,.7);padding:26px 24px}
+  .cell .num{font-family:var(--grot);font-weight:700;font-size:2.6rem;color:var(--amber);line-height:1;margin-bottom:8px}
+  .cell .lbl{font-family:var(--mono);font-size:.64rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+  .chips span{font-family:var(--mono);font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:8px 18px;color:var(--dim);transition:all .25s}
+  .chips span:hover{border-color:var(--amber);color:var(--amber)}
+
+  .voices{display:grid;gap:14px;margin-top:24px}
+  .voice{border-left:2px solid var(--amber);padding:4px 0 4px 20px}
+  .voice p{font-family:var(--grot);font-size:1.25rem;margin-bottom:6px}
+  .voice cite{font-style:normal;font-family:var(--mono);font-size:.66rem;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+  .cta{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;padding:15px 30px;border-radius:6px;transition:all .3s;font-weight:500;border:1px solid var(--line)}
+  .cta.solid{background:var(--amber);border-color:var(--amber);color:var(--void)}
+  .cta.solid:hover{background:var(--bone);border-color:var(--bone);transform:translateY(-3px)}
+  .cta.ghost:hover{border-color:var(--amber);color:var(--amber);transform:translateY(-3px)}
+
+  /* ---------- case drawer ---------- */
+  #drawer{position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(480px,94vw);background:rgba(14,14,17,.94);border-left:1px solid var(--line);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transform:translateX(102%);transition:transform .55s cubic-bezier(.16,1,.3,1);padding:90px 40px 40px;overflow-y:auto}
+  #drawer.open{transform:none}
+  #drawer .d-no{font-family:var(--mono);font-size:.68rem;letter-spacing:.3em;color:var(--amber);margin-bottom:14px}
+  #drawer h3{font-family:var(--grot);font-size:2.6rem;font-weight:700;margin-bottom:6px}
+  #drawer .d-tag{font-family:var(--mono);font-size:.78rem;color:var(--amber);margin-bottom:20px}
+  #drawer p{color:var(--dim);margin-bottom:22px;font-size:.96rem}
+  #drawer .d-stack{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px}
+  #drawer .d-stack span{font-family:var(--mono);font-size:.66rem;border:1px solid var(--line);padding:6px 12px;border-radius:4px;color:var(--dim)}
+  #drawer .d-links{display:flex;flex-direction:column;gap:12px}
+  #drawer .d-links a{font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;border:1px solid var(--line);border-radius:6px;padding:14px 20px;transition:all .25s;display:flex;justify-content:space-between}
+  #drawer .d-links a:hover{border-color:var(--amber);color:var(--amber)}
+  #drawerClose{position:absolute;top:26px;right:30px;background:none;border:1px solid var(--line);color:var(--bone);width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:1.1rem;transition:all .3s}
+  #drawerClose:hover{border-color:var(--amber);color:var(--amber);transform:rotate(90deg)}
+  #scrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);opacity:0;visibility:hidden;transition:all .4s}
+  #scrim.open{opacity:1;visibility:visible}
+
+  .cite{border-bottom:1px dotted var(--amber);cursor:help}
+  body.grounding .cite{background:rgba(232,163,61,.18);outline:1px solid var(--amber);border-radius:2px;position:relative}
+  body.grounding .cite::after{content:attr(data-src);position:absolute;top:-1.7em;left:0;font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;background:var(--amber);color:var(--void);padding:2px 8px;border-radius:3px;white-space:nowrap;z-index:5}
+  #groundBar{position:fixed;bottom:0;left:0;right:0;z-index:90;background:#151310;color:var(--bone);font-family:var(--mono);font-size:.68rem;letter-spacing:.2em;padding:12px 20px;text-align:center;transform:translateY(100%);transition:transform .4s;border-top:1px solid var(--amber)}
+  body.grounding #groundBar{transform:none}
+  #groundBar b{color:var(--amber)}
+
+  footer.site{position:relative;z-index:10;border-top:1px solid var(--line);padding:28px clamp(20px,5vw,72px);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-family:var(--mono);font-size:.64rem;letter-spacing:.2em;color:var(--faint);background:rgba(10,10,12,.7);backdrop-filter:blur(10px)}
+  footer.site .amber{color:var(--amber)}
+
+  .rv{opacity:0;transform:translateY(30px);transition:opacity .9s cubic-bezier(.16,1,.3,1),transform .9s cubic-bezier(.16,1,.3,1)}
+  .rv.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    .rv{opacity:1;transform:none;transition:none}
+    .ticker-track{animation:none}
+    #loader{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="loader" aria-hidden="true">
+  <div class="lt">PARVEZ.OS</div>
+  <div class="lb"><i id="loadfill"></i></div>
+  <div class="ls" id="loadmsg">IGNITING GROUNDING ENGINE…</div>
+</div>
+
+<canvas id="gl"></canvas>
+<div class="vignette"></div>
+<div class="noise"></div>
+
+<div class="hud tl"><span class="dot"></span><span><b>PARVEZ.OS</b>&nbsp;&nbsp;v2026.10</span></div>
+<div class="hud tr"><b>IST</b>&nbsp;&nbsp;<span id="clock">--:--:--</span></div>
+<div class="hud bl">CH&nbsp;&nbsp;<b id="chInd">00 / 06</b></div>
+<div class="hud br">drag to orbit · scroll to fly · <kbd>1–4</kbd> case files · <kbd>E</kbd> email</div>
+
+<div id="scroll">
+  <!-- 00 HERO -->
+  <section class="chapter hero-chapter" data-ch="00">
+    <div style="pointer-events:auto">
+      <div class="hero-kicker"><b>● SYSTEM NOMINAL</b>&nbsp;&nbsp;·&nbsp;&nbsp;THE HONEST AI ENGINEER</div>
+      <h1 class="mega">PARVEZ<br><span class="amber">BUILDS PROOF.</span></h1>
+      <p class="hero-sub">I'm <strong>Mohamed Parvez Maharoof</strong> — AI product engineer, second-year B.Tech. Behind this page spins a live grounding engine: four shipped AI systems orbiting one rule — <strong>every claim cited, every limit disclosed.</strong> Drag the void. Click a constellation.</p>
+    </div>
+    <div class="ticker"><div class="ticker-track" id="ticker"></div></div>
+  </section>
+
+  <!-- 01 THESIS -->
+  <section class="chapter" data-ch="01">
+    <div class="panel rv">
+      <div class="ch-no">CHAPTER 01 — THE THESIS</div>
+      <h2 class="big">Most AI sounds confident.<br><span class="dim">Mine is built to be doubted.</span></h2>
+      <p>"AI study tools sound confident <em>even when they're wrong.</em> So I stopped tuning prompts and started building <strong>systems where honesty is architecture</strong> — retrieval you can audit, citations you can click, fallbacks that admit what they are."</p>
+      <p style="font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;color:var(--faint)">KUMBAKONAM, TN → BENGALURU · B.TECH '29, ALLIANCE UNIVERSITY · <span class="cite" data-src="Alliance I&I">FOUNDER, HEY HORIZON</span></p>
+    </div>
+  </section>
+
+  <!-- 02 CASE FILES -->
+  <section class="chapter" data-ch="02">
+    <div class="panel right rv">
+      <div class="ch-no">CHAPTER 02 — CASE FILES</div>
+      <h2 class="big">Four systems,<br><span class="dim">one orbit.</span></h2>
+      <p>Each constellation out there is a shipped system. <strong>Click one</strong> — or open its file here.</p>
+      <div class="case-grid">
+        <button class="case-btn clickable" data-case="anvil"><span class="cb-n">01 · PRESS 1</span><h4>ANVIL</h4><p>Autonomous coding engineer · Nebius × NVIDIA</p></button>
+        <button class="case-btn clickable" data-case="athena"><span class="cb-n">02 · PRESS 2</span><h4>ATHENA</h4><p>Source-cited study companion · Track D</p></button>
+        <button class="case-btn clickable" data-case="scamlens"><span class="cb-n">03 · PRESS 3</span><h4>SCAMLENS</h4><p>Bilingual scam detector · ForgeHacks</p></button>
+        <button class="case-btn clickable" data-case="formlens"><span class="cb-n">04 · PRESS 4</span><h4>FORMLENS</h4><p>Computer vision · OpenCV AI Comp.</p></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 LEDGER -->
+  <section class="chapter" data-ch="03">
+    <div class="panel rv">
+      <div class="ch-no">CHAPTER 03 — THE LEDGER</div>
+      <h2 class="big">Counted,<br><span class="dim">not claimed.</span></h2>
+      <p>Same doctrine as the work: numbers you can check. Wins aren't listed — judging is still open on every autumn entry.</p>
+      <div class="ledger">
+        <div class="cell"><div class="num" data-count="32">0</div><div class="lbl cite" data-src="GitHub">Public repos · since Dec 2025</div></div>
+        <div class="cell"><div class="num" data-count="19">0</div><div class="lbl cite" data-src="Devpost">Hackathons · Devpost</div></div>
+        <div class="cell"><div class="num" data-count="158">0</div><div class="lbl">Contributions / year</div></div>
+        <div class="cell"><div class="num" data-count="4">0</div><div class="lbl">Systems shipped · 5 weeks</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 FIELD KIT -->
+  <section class="chapter" data-ch="04">
+    <div class="panel right rv">
+      <div class="ch-no">CHAPTER 04 — FIELD KIT</div>
+      <h2 class="big">Tools of<br><span class="dim">the trade.</span></h2>
+      <div class="chips">
+        <span>Python</span><span>FastAPI</span><span>Nemotron 3 Ultra/Super/Nano</span><span>Nebius Token Factory</span><span>Groq</span><span>OpenRouter</span><span>Ollama</span><span>ReAct agents</span><span>RAG</span><span>BM25 from scratch</span><span>TypeScript</span><span>Next.js</span><span>React Native</span><span>Flutter</span><span>Docker</span><span>PostgreSQL</span><span>Supabase</span><span>pytest</span><span>Figma</span><span>UI/UX systems</span>
+      </div>
+      <p style="margin-top:22px">Plus the long archive: Hey Horizon (incubated AI voice companion), realtime backends, doc engines, trading systems, cinematic interfaces — <a href="https://github.com/MOHAMEDPARVEZMAHAROOF" target="_blank" rel="noopener" style="color:var(--amber);border-bottom:1px solid var(--amber)">28 more repos →</a></p>
+    </div>
+  </section>
+
+  <!-- 05 VOICE -->
+  <section class="chapter" data-ch="05">
+    <div class="panel rv">
+      <div class="ch-no">CHAPTER 05 — VOICE NOTES</div>
+      <h2 class="big">How he talks<br><span class="dim">about the work.</span></h2>
+      <div class="voices">
+        <div class="voice"><p>"One decision. Three experts. One voice."</p><cite>— the Exascale router</cite></div>
+        <div class="voice"><p>"Keeping the model honest."</p><cite>— Athena engineering notes</cite></div>
+        <div class="voice"><p>"Grounding is a systems problem, not just a prompt problem."</p><cite>— design doctrine</cite></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 CONTACT -->
+  <section class="chapter" data-ch="06">
+    <div class="panel rv" style="max-width:720px;margin:0 auto;text-align:center">
+      <div class="ch-no">FINAL TRANSMISSION</div>
+      <h2 class="big">Let's build<br>something <span style="color:var(--amber)">honest.</span></h2>
+      <p>Open to internships, freelance builds, and hackathon teams. If it involves agents, grounding, or interfaces people love — I'm in.</p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="cta solid" href="mailto:mohamedparvezmaharoof10@gmail.com">EMAIL ME</a>
+        <a class="cta ghost" href="https://github.com/MOHAMEDPARVEZMAHAROOF" target="_blank" rel="noopener">GITHUB</a>
+        <a class="cta ghost" href="https://devpost.com/MOHAMEDPARVEZMAHAROOF" target="_blank" rel="noopener">DEVPOST</a>
+        <a class="cta ghost" href="https://www.youtube.com/@MOHAMEDPARVEZMAHAROOF-j1k" target="_blank" rel="noopener">YOUTUBE</a>
+      </div>
+      <p style="margin-top:26px;font-family:var(--mono);font-size:.68rem;letter-spacing:.22em;color:var(--faint)">KUMBAKONAM → BENGALURU · REPLIES WITHIN A DAY</p>
+    </div>
+  </section>
+</div>
+
+<div id="scrim"></div>
+<aside id="drawer" aria-hidden="true">
+  <button id="drawerClose" aria-label="Close">✕</button>
+  <div class="d-no" id="dNo">CASE FILE 01</div>
+  <h3 id="dTitle">ANVIL</h3>
+  <div class="d-tag" id="dTag"></div>
+  <p id="dBody"></p>
+  <div class="d-stack" id="dStack"></div>
+  <div class="d-links" id="dLinks"></div>
+</aside>
+
+<footer class="site">
+  <span>© 2026 <span class="amber">MOHAMED PARVEZ MAHAROOF</span></span>
+  <span>PARVEZ.OS · BUILT TO BE DOUBTED</span>
+</footer>
+
+<div id="groundBar"><b>Grounding mode</b> — every highlighted claim carries its source. Press G again to exit.</div>
+
+<script>
+(function(){
+"use strict";
+var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= DATA ================= */
+var CASES={
+  anvil:{no:'CASE FILE 01',title:'ANVIL',tag:'"Give it a coding task. It hands you a green diff."',
+    body:'An autonomous AI coding engineer built for the Nebius × NVIDIA Global AI Hackathon. A Nemotron 3 Ultra planner decomposes the task, a Super builder writes code inside Nebius Token Factory sandboxes, a Nano model takes the fast paths — a ReAct loop of one JSON action per turn, with tests run before anything is handed back.',
+    stack:['Python','FastAPI + SSE','Nemotron 3 Ultra / Super / Nano','Nebius Token Factory','Sandbox execution','Tavily','pytest'],
+    links:[['VIEW SOURCE','https://github.com/MOHAMEDPARVEZMAHAROOF/anvil'],['WATCH DEMO','https://www.youtube.com/@MOHAMEDPARVEZMAHAROOF-j1k']]},
+  athena:{no:'CASE FILE 02',title:'ATHENA',tag:'"Citations validated, not decorative."',
+    body:'A source-cited study companion — my Multimodal AI Hackathon Track D entry. Upload notes, get grounded Q&A with inline [n] citations. Retrieval is BM25 implemented from scratch in pure Python; quizzes adapt via per-topic Elo ratings and Leitner spaced repetition. The offline fallback is honestly labeled "template mode" — out loud.',
+    stack:['Python','FastAPI + SQLite','Vanilla JS','BM25 from scratch','Elo + Leitner','Nemotron 3 Super'],
+    links:[['VIEW SOURCE','https://github.com/MOHAMEDPARVEZMAHAROOF/athena'],['DEVPOST ENTRY','https://devpost.com/software/athena-w1kv0y'],['DEMO FILM','https://www.youtube.com/watch?v=NbzVglBydU0']]},
+  scamlens:{no:'CASE FILE 03',title:'SCAMLENS',tag:'"No accuracy claims. Just the verdict, and why."',
+    body:'My ForgeHacks AI+Cybersecurity entry. Paste a suspicious SMS or call transcript → SAFE / SUSPICIOUS / SCAM, in English and Tamil. A deterministic pre-screener catches URLs, UPI IDs and OTP lures; the LLM reasons over Indian fraud archetypes — digital arrest, KYC cons. Defensive by design: limits disclosed, never exaggerated.',
+    stack:['Python','FastAPI + SQLite','Regex pre-screener','EN + Tamil lexicons','Nemotron 3 Super'],
+    links:[['VIEW SOURCE','https://github.com/MOHAMEDPARVEZMAHAROOF/scamlens'],['DEVPOST ENTRY','https://devpost.com/software/scamlens-mf3xlu']]},
+  formlens:{no:'CASE FILE 04',title:'FORMLENS',tag:'"Computer vision, submitted to OpenCV\'s own arena."',
+    body:'My computer-vision entry for the OpenCV AI Competition 2026, powered by AWS — built, filmed as a full product film, and submitted with a complete technical report. The fourth system in the autumn run.',
+    stack:['Computer Vision','OpenCV','Python','Technical report'],
+    links:[['VIEW SOURCE','https://github.com/MOHAMEDPARVEZMAHAROOF/formlens'],['DEVPOST ENTRY','https://devpost.com/software/formlens-jnul9o']]}
+};
+var ORDER=['anvil','athena','scamlens','formlens'];
+
+/* ================= UI: clock, ticker, reveals, counters ================= */
+function tickClock(){try{document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});}catch(e){}}
+tickClock();setInterval(tickClock,1000);
+
+(function(){
+  var items=['<span><span class="ok">●</span> ANVIL — SUBMITTED · NEBIUS × NVIDIA</span>','<span><span class="ok">●</span> ATHENA — SUBMITTED · MULTIMODAL AI TRACK D</span>','<span><span class="ok">●</span> SCAMLENS — SUBMITTED · FORGEHACKS AI+CYBER</span>','<span><span class="ok">●</span> FORMLENS — SUBMITTED · OPENCV AI COMPETITION</span>','<span>32 PUBLIC REPOS</span>','<span>19 HACKATHONS</span>'];
+  var h=items.join('<span style="color:var(--amber)">·</span>');
+  document.getElementById('ticker').innerHTML=h+'<span style="color:var(--amber)">·</span>'+h+'<span style="color:var(--amber)">·</span>';
+})();
+
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});
+document.querySelectorAll('.rv').forEach(function(el){io.observe(el);});
+
+var cio=new IntersectionObserver(function(es){es.forEach(function(e){
+  if(!e.isIntersecting)return;var el=e.target,target=parseInt(el.dataset.count,10),t0=null;
+  function tick(t){if(!t0)t0=t;var p=Math.min((t-t0)/1400,1);el.textContent=Math.round(target*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(tick);}
+  requestAnimationFrame(tick);cio.unobserve(el);});},{threshold:.5});
+document.querySelectorAll('[data-count]').forEach(function(el){cio.observe(el);});
+
+/* chapter indicator */
+var chInd=document.getElementById('chInd');
+var chIO=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){chInd.textContent=e.target.dataset.ch+' / 06';}});},{threshold:.4});
+document.querySelectorAll('.chapter').forEach(function(s){chIO.observe(s);});
+
+/* ================= DRAWER ================= */
+var drawer=document.getElementById('drawer'),scrim=document.getElementById('scrim');
+function openCase(key){
+  var c=CASES[key];if(!c)return;
+  document.getElementById('dNo').textContent=c.no;
+  document.getElementById('dTitle').textContent=c.title;
+  document.getElementById('dTag').textContent=c.tag;
+  document.getElementById('dBody').textContent=c.body;
+  document.getElementById('dStack').innerHTML=c.stack.map(function(s){return '<span>'+s+'</span>';}).join('');
+  document.getElementById('dLinks').innerHTML=c.links.map(function(l){return '<a href="'+l[1]+'" target="_blank" rel="noopener"><span>'+l[0]+'</span><span>↗</span></a>';}).join('');
+  drawer.classList.add('open');scrim.classList.add('open');drawer.setAttribute('aria-hidden','false');
+}
+function closeCase(){drawer.classList.remove('open');scrim.classList.remove('open');drawer.setAttribute('aria-hidden','true');}
+document.getElementById('drawerClose').addEventListener('click',closeCase);
+scrim.addEventListener('click',closeCase);
+document.querySelectorAll('.case-btn').forEach(function(b){b.addEventListener('click',function(){openCase(b.dataset.case);});});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape')closeCase();
+  if(e.key==='g'||e.key==='G')document.body.classList.toggle('grounding');
+  var map={'1':'anvil','2':'athena','3':'scamlens','4':'formlens'};
+  if(map[e.key])openCase(map[e.key]);
+  if(e.key==='e'||e.key==='E')window.location.href='mailto:mohamedparvezmaharoof10@gmail.com';
+});
+
+/* ================= THREE.JS GROUNDING ENGINE ================= */
+var loadfill=document.getElementById('loadfill'),loadmsg=document.getElementById('loadmsg');
+function prog(p,m){loadfill.style.width=Math.round(p*100)+'%';if(m)loadmsg.textContent=m;}
+function done(){document.getElementById('loader').classList.add('done');}
+
+if(!window.THREE){document.body.classList.add('no-webgl');done();}
+else{try{initEngine();}catch(err){document.body.classList.add('no-webgl');done();}}
+
+function initEngine(){
+  prog(0.15,'BUILDING HONESTY CORE…');
+  var canvas=document.getElementById('gl');
+  var renderer;
+  try{renderer=new THREE.WebGLRenderer({canvas:canvas,alpha:true,antialias:true});}
+  catch(e){throw e;}
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  var scene=new THREE.Scene();
+  scene.fog=new THREE.FogExp2(0x0a0a0c,0.028);
+  var camera=new THREE.PerspectiveCamera(50,1,0.1,200);
+  camera.position.set(0,1.4,15);
+
+  var AMBER=0xE8A33D,AMBER_DIM=0x8a5f22;
+
+  /* starfield */
+  (function(){
+    var N=2200,p=new Float32Array(N*3);
+    for(var i=0;i<N;i++){
+      var r=30+Math.random()*60,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);
+      p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.sin(ph)*Math.sin(th)*0.6;p[i*3+2]=r*Math.cos(ph);
+    }
+    var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
+    scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:0.14,color:0x8f8874,transparent:true,opacity:0.55,depthWrite:false})));
+  })();
+
+  /* honesty core */
+  var coreGroup=new THREE.Group();scene.add(coreGroup);
+  var coreWire=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5,1),new THREE.MeshBasicMaterial({color:AMBER,wireframe:true,transparent:true,opacity:0.85}));
+  coreGroup.add(coreWire);
+  var coreSolid=new THREE.Mesh(new THREE.IcosahedronGeometry(1.05,1),new THREE.MeshBasicMaterial({color:0x1a1206,transparent:true,opacity:0.92}));
+  coreGroup.add(coreSolid);
+  // glow sprite
+  var glowTex=(function(){
+    var c=document.createElement('canvas');c.width=c.height=256;
+    var x=c.getContext('2d'),gr=x.createRadialGradient(128,128,0,128,128,128);
+    gr.addColorStop(0,'rgba(232,163,61,0.55)');gr.addColorStop(0.4,'rgba(232,163,61,0.18)');gr.addColorStop(1,'rgba(232,163,61,0)');
+    x.fillStyle=gr;x.fillRect(0,0,256,256);
+    return new THREE.CanvasTexture(c);
+  })();
+  var glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,depthWrite:false}));
+  glow.scale.set(9,9,1);coreGroup.add(glow);
+
+  function labelSprite(text,scale){
+    var c=document.createElement('canvas');c.width=512;c.height=128;
+    var x=c.getContext('2d');
+    x.font='600 58px "Space Grotesk", sans-serif';x.textAlign='center';x.textBaseline='middle';
+    try{x.letterSpacing='14px';}catch(e){}
+    x.fillStyle='#E8A33D';x.fillText(text,256,64);
+    var t=new THREE.CanvasTexture(c);t.anisotropy=4;
+    var s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false}));
+    s.scale.set(scale,scale/4,1);return s;
+  }
+  var coreLabel=labelSprite('HONESTY CORE',2.6);coreLabel.position.y=2.4;coreGroup.add(coreLabel);
+
+  /* constellations */
+  var system=new THREE.Group();scene.add(system);
+  var orbiters=[];
+  var RADIUS=6.4;
+  ORDER.forEach(function(key,idx){
+    var pivot=new THREE.Group();system.add(pivot);
+    var ang=(idx/ORDER.length)*Math.PI*2;
+    var holder=new THREE.Group();
+    holder.position.set(Math.cos(ang)*RADIUS,(idx%2?1.1:-1.1),Math.sin(ang)*RADIUS);
+    pivot.add(holder);
+
+    // point cluster
+    var CN=150,cp=new Float32Array(CN*3);
+    for(var i=0;i<CN;i++){
+      var r=0.5+Math.random()*0.9,th=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1);
+      cp[i*3]=r*Math.sin(ph)*Math.cos(th);cp[i*3+1]=r*Math.cos(ph)*0.7;cp[i*3+2]=r*Math.sin(ph)*Math.sin(th);
+    }
+    var cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.BufferAttribute(cp,3));
+    holder.add(new THREE.Points(cg,new THREE.PointsMaterial({size:0.09,color:AMBER,transparent:true,opacity:0.9,depthWrite:false})));
+    // ring
+    var ring=new THREE.Mesh(new THREE.TorusGeometry(1.35,0.015,8,64),new THREE.MeshBasicMaterial({color:AMBER_DIM,transparent:true,opacity:0.7}));
+    ring.rotation.x=Math.PI/2.4;holder.add(ring);
+    // nucleus
+    holder.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28),new THREE.MeshBasicMaterial({color:AMBER})));
+    // label
+    var lab=labelSprite(CASES[key].title,2.2);lab.position.y=2.0;holder.add(lab);
+    // tether line to core
+    var lg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),holder.position.clone()]);
+    pivot.add(new THREE.Line(lg,new THREE.LineBasicMaterial({color:AMBER,transparent:true,opacity:0.16})));
+    // invisible hit sphere
+    var hit=new THREE.Mesh(new THREE.SphereGeometry(1.9,8,8),new THREE.MeshBasicMaterial({visible:false}));
+    hit.userData.caseKey=key;holder.add(hit);
+    orbiters.push({pivot:pivot,holder:holder,hit:hit,ring:ring,speed:0.05+Math.random()*0.03,phase:Math.random()*10});
+  });
+
+  /* interaction: drag rotate + click raycast */
+  var targetRY=0,targetRX=0,curRY=0,curRX=0;
+  var dragging=false,downX=0,downY=0,moved=0,lastPX=0,lastPY=0;
+  canvas.addEventListener('pointerdown',function(e){dragging=true;moved=0;downX=lastPX=e.clientX;downY=lastPY=e.clientY;canvas.classList.add('dragging');canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener('pointermove',function(e){
+    if(!dragging)return;
+    var dx=e.clientX-lastPX,dy=e.clientY-lastPY;lastPX=e.clientX;lastPY=e.clientY;
+    moved+=Math.abs(dx)+Math.abs(dy);
+    targetRY+=dx*0.005;targetRX=Math.max(-0.6,Math.min(0.6,targetRX+dy*0.003));
+  });
+  canvas.addEventListener('pointerup',function(e){
+    dragging=false;canvas.classList.remove('dragging');
+    if(moved<8)pick(e.clientX,e.clientY);
+  });
+  var ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+  function pick(cx,cy){
+    ndc.x=(cx/window.innerWidth)*2-1;ndc.y=-(cy/window.innerHeight)*2+1;
+    ray.setFromCamera(ndc,camera);
+    var hits=ray.intersectObjects(orbiters.map(function(o){return o.hit;}));
+    if(hits.length)openCase(hits[0].object.userData.caseKey);
+  }
+
+  /* scroll → camera flight */
+  var progress=0;
+  function measure(){
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    progress=h>0?Math.min(Math.max(window.scrollY/h,0),1):0;
+  }
+  window.addEventListener('scroll',measure,{passive:true});measure();
+
+  function resize(){
+    var w=window.innerWidth,h=window.innerHeight;
+    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize',resize);resize();
+
+  var t=0,clock=new THREE.Clock();
+  prog(0.7,'CHARGING CONSTELLATIONS…');
+  function animate(){
+    requestAnimationFrame(animate);
+    var dt=Math.min(clock.getDelta(),0.05);t+=dt;
+    // damping for drag rotation
+    curRY+=(targetRY-curRY)*0.06;curRX+=(targetRX-curRX)*0.06;
+    system.rotation.y=curRY+t*0.04+progress*Math.PI*1.6;
+    system.rotation.x=curRX;
+    coreGroup.rotation.y=t*0.12;coreGroup.rotation.x=Math.sin(t*0.2)*0.15;
+    var pulse=1+Math.sin(t*1.6)*0.05;coreWire.scale.set(pulse,pulse,pulse);
+    orbiters.forEach(function(o){
+      o.holder.rotation.y=t*o.speed*4+o.phase;
+      o.ring.rotation.z=t*0.3+o.phase;
+      var s=1+Math.sin(t*2+o.phase)*0.06;o.holder.scale.set(s,s,s);
+    });
+    // camera flight
+    var cz=15-progress*6.5, cy=1.4+progress*1.1;
+    camera.position.z+=(cz-camera.position.z)*0.06;
+    camera.position.y+=(cy-camera.position.y)*0.06;
+    camera.position.x+=(Math.sin(t*0.15)*0.6-camera.position.x)*0.03;
+    camera.lookAt(0,0.2,0);
+    renderer.render(scene,camera);
+  }
+  prog(0.9,'RENDERING…');
+  animate();
+  prog(1,'ONLINE');
+  setTimeout(done,500);
+
+  if(reduced){
+    // freeze: render a few frames then stop the loop
+    var frames=0,_r=window.requestAnimationFrame;
+    window.requestAnimationFrame=function(cb){if(frames++>60){window.requestAnimationFrame=_r;return 0;}return _r(cb);};
+  }
+}
+})();
+</script>
+</body>
+</html>
